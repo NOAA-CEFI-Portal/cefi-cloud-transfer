@@ -1,5 +1,10 @@
 """
 Using boto3 to transfer files from the local filesystem to S3.
+
+This script is utilizing the boto3 session
+all AWS credentials are setup through AWS CLI with
+`aws configure`
+
 """
 
 import os
