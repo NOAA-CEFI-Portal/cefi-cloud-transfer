@@ -53,6 +53,7 @@ def boto3_upload(
             obj_name,
             s3_bucket_name
         )
+        return
     except ClientError as e:
         # If the object doesn't exist
         if e.response['Error']['Code'] == '404':
@@ -74,6 +75,7 @@ def boto3_upload(
     except Exception as e:
         logging.error("Error uploading %s: %s",obj_name,e)
 
+    return
 
 if __name__ == '__main__':
 
