@@ -1,0 +1,18 @@
+name: cefi-cloud-transfer
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - siphon
+  - boto3
+  - fsspec
+  - xarray
+  - jupyterlab
+  - cf_xarray
+  - matplotlib
+  - cartopy
+  - kerchunk
+  - ujson
+  - numpy
+  - google-cloud-sdk
+  - urllib3
