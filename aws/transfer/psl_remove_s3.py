@@ -56,7 +56,7 @@ def boto3_remove(
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
-        print("Usage: python psl_upload_s3.py <config_file.json>")
+        print("Usage: python psl_remove_s3.py <config_file.json>")
         sys.exit(1)
 
     config_file = sys.argv[1]
