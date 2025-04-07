@@ -5,13 +5,26 @@ This script is utilizing the boto3 session
 all AWS credentials are setup through AWS CLI with
 `aws configure`
 
+A configuration JSON file is used to specify the
+local root directories, S3 bucket name, and other parameters.
+The script will walk through the specified local directories,
+find all netcdf files, and upload them to the specified S3 bucket.
+
 """
 
 import os
+import sys
+import json
 import logging
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
+
+# load the configuration JSON file
+def load_config(json_file):
+    """Load directory configuration from a JSON file."""
+    with open(json_file, 'r', encoding='utf-8') as jsonfile:
+        return json.load(jsonfile)
 
 # setup logging
 def setup_logging(logfile_name):
@@ -84,12 +97,25 @@ def boto3_upload(
 
 if __name__ == '__main__':
 
+    if len(sys.argv) != 2:
+        print("Usage: python psl_upload_s3.py <config_file.json>")
+        sys.exit(1)
+
+    config_file = sys.argv[1]
+
+    # Load config
+    dict_config = load_config(config_file)
+    LOG_FILE = dict_config["log_file_name"]
+    S3_CEFI = dict_config["s3_buck_name"]
+    local_root_dirs = dict_config["local_root_dirs"]
+    release = dict_config["release"]
+
     # Setup logging file
-    LOG_FILE = 's3_psl_upload.log'
+    if os.path.exists(LOG_FILE):
+        os.remove(LOG_FILE)
     setup_logging(LOG_FILE)
 
     # Create a single session and S3 client
-    S3_CEFI = 'noaa-oar-cefi-regional-mom6-pds'
     session = boto3.Session()
     s3_client_upload = session.client("s3")
 
@@ -101,26 +127,32 @@ if __name__ == '__main__':
         use_threads=True                        # Enable threading
     )
 
-    # local file root directories
-    local_root_dirs = [
-        '/Projects/CEFI/regional_mom6/cefi_portal/'
-    ]
+    # portal root directories
+    #  used to calculate relative path based on the local_root_dirs
+    portal_root_dir = '/Projects/CEFI/regional_mom6/cefi_portal/'
 
     # walk through all netcdf files under the root directory
     for root_dir in local_root_dirs:
         for dirpath, dirnames, filenames in os.walk(root_dir):
             # Skip symlinked directories
             if os.path.islink(dirpath):
-                logging.warning("Skipping symlinked directory: %s", dirpath)
                 continue
 
             # Calculate the relative path from root_dir
-            relative_dirpath = os.path.relpath(dirpath, root_dir)
+            relative_dirpath = os.path.relpath(dirpath, portal_root_dir)
+
+            # Find release folder name
+            release_folder = os.path.basename(os.path.normpath(dirpath))
+            # Skip last folder not equal to the required release
+            if release_folder != release:
+                continue
+
             for filename in filenames:
+                # only upload netcdf files
                 if filename.endswith('.nc') :
                     objectname = os.path.join(relative_dirpath,filename)
                     boto3_upload(
-                        local_root = root_dir,
+                        local_root = portal_root_dir,
                         file_rel_path = objectname,
                         s3_bucket_name = S3_CEFI,
                         upload_config = transfer_config,
