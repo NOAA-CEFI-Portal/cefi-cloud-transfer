@@ -1,0 +1,8 @@
+{
+    "log_file_name": "psl_remove_s3_nep_hindcast.log",
+    "s3_buck_name": "noaa-oar-cefi-regional-mom6-pds",
+    "local_root_dirs": [
+        "/Projects/CEFI/regional_mom6/cefi_portal/northeast_pacific/full_domain/hindcast/"
+    ],
+    "release": "r20241015"
+}
