@@ -5,6 +5,12 @@ This script is utilizing the boto3 session
 all AWS credentials are setup through AWS CLI with
 `aws configure`
 
+You will need to enter
+- AWS Access Key ID
+- AWS Secret Access Key
+- Default region (e.g., `us-east-1`)
+- Output format (leave as `None` or type `json`)
+
 A configuration JSON file is used to specify the
 local root directories, S3 bucket name, and other parameters.
 The script will walk through the entire CEFI data root directory,
@@ -18,6 +24,7 @@ import logging
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
+import xarray as xr
 
 # set up bucket
 S3_BUCKET_NAME = 'noaa-oar-cefi-regional-mom6-pds'
@@ -25,7 +32,7 @@ S3_BUCKET_NAME = 'noaa-oar-cefi-regional-mom6-pds'
 # set up log file location
 script_dir = os.path.dirname(os.path.abspath(__file__))
 date_str = datetime.now().strftime("%Y%m%d")
-LOG_FILE = f's3_upload_{date_str}.log'
+LOG_FILE = 's3_upload.log'
 log_path = os.path.join(script_dir, LOG_FILE)
 
 
@@ -77,6 +84,7 @@ def boto3_upload(
             s3_bucket_name
         )
         return
+
     except ClientError as e:
         # If the object doesn't exist
         if e.response['Error']['Code'] == '404':
@@ -85,6 +93,14 @@ def boto3_upload(
             # Handle other errors (e.g., permission issues)
             logging.error("Error checking object existence: %s", e)
             return
+
+    # check local data integrity
+    try :
+        ds = xr.open_dataset(local_file)
+        ds.close()
+    except Exception as e:
+        logging.error("Error verifying local file %s: %s", local_file, e)
+        return
 
     # upload object
     try:
@@ -200,6 +216,50 @@ def keep_latest_release(dict_files):
         dict_outdated_releases[parent_dir].pop(latest_release, None)
 
     return dict_latest_release,dict_outdated_releases
+
+def verify_s3_file_access(s3_bucket_name: str, obj_name: str) -> bool:
+    """
+    Verify that the uploaded S3 file can be accessed remotely and opened with xarray.
+    
+    Parameters
+    ----------
+    s3_bucket_name : str
+        S3 bucket name
+    obj_name : str
+        S3 object key/name
+        
+    Returns
+    -------
+    bool
+        True if file can be accessed and opened with xarray, False otherwise
+    """
+    s3_storage_options = {
+        "remote_options": {"anon": True},
+        "remote_protocol": "s3",
+        # "target_options": {"anon": True},
+        "target_protocol": "s3",
+    }
+    try:
+        # Construct S3 path
+        s3_path = f's3://{s3_bucket_name}/{obj_name}'
+
+        with xr.open_dataset(
+            s3_path,
+            engine="netcdf4",
+            chunks='auto',
+            storage_options=s3_storage_options
+        ) as ds:
+            # Basic validation - check if dataset has variables
+            if len(ds.data_vars) > 0:
+                logging.info("File validation passed - %s", ds[ds.attrs['cefi_variable']])
+                return True
+            else:
+                logging.warning("File opened but contains no data variables")
+                return False
+                
+    except Exception as e:
+        logging.error("Failed to verify S3 file access: %s", e)
+        return False
 
 if __name__ == '__main__':
 
