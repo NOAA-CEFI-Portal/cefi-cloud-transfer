@@ -7,6 +7,10 @@ dependencies:
   - boto3
   - fsspec
   - xarray
+  - dask
+  - h5py
+  - netcdf4
+  - s3fs
   - jupyterlab
   - cf_xarray
   - matplotlib
