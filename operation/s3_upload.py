@@ -147,7 +147,7 @@ def create_file_dict(local_root_dirs):
             ...
         }
     """
-        # walk through all netcdf files under the root directory
+    # walk through all netcdf files under the root directory
     dict_files = {}
 
     for dirpath, dirnames, filenames in os.walk(local_root_dirs):
