@@ -318,11 +318,18 @@ def gen_kerchunk_index(
         return json_file
 
 if __name__ == '__main__':
+    # setup if performing kerchunking alongside file upload
+    KERCHUNK_FLAG = True
 
     # Setup logging file
     if os.path.exists(LOG_FILE):
         os.remove(LOG_FILE)
     setup_logging(LOG_FILE)
+
+    if KERCHUNK_FLAG:
+        logging.info("Kerchunking is enabled.")
+    else:
+        logging.info("Kerchunking is disabled.")
 
     # Create a single session and S3 client
     session = boto3.Session()
@@ -351,7 +358,7 @@ if __name__ == '__main__':
                 # Get the local file path and cloud object name for netcdf
                 local_file_path = file_info['local']
                 cloud_object_name = file_info['cloud']
-                
+
                 # Upload the netcdf file to S3
                 boto3_upload(
                     local_file=local_file_path,
@@ -360,30 +367,32 @@ if __name__ == '__main__':
                     upload_config=transfer_config,
                     s3_client=s3_client_upload
                 )
-    
-                # create kerchunk json file
-                s3_ncfile_path = f's3://{S3_BUCKET_NAME}/{cloud_object_name}'
-                local_json_path = gen_kerchunk_index(
-                    s3_path=s3_ncfile_path,
-                    save_dir='/home/chsu/cefi-cloud-transfer/operation/s3_kerchunk_json'
-                )
-                all_local_json_paths.append(local_json_path)
 
-                # Upload the json file to S3
-                s3_json_filename = cloud_object_name.split("/")[-1].strip(".nc")
-                s3_json_path = "/".join(cloud_object_name.split("/")[:-1])
-                boto3_upload(
-                    local_file=local_json_path,
-                    obj_name=f'{s3_json_path}/{s3_json_filename}.json',
-                    s3_bucket_name=S3_BUCKET_NAME,
-                    upload_config=transfer_config,
-                    s3_client=s3_client_upload
-                )
+                if KERCHUNK_FLAG :
+                    # create kerchunk json file
+                    s3_ncfile_path = f's3://{S3_BUCKET_NAME}/{cloud_object_name}'
+                    local_json_path = gen_kerchunk_index(
+                        s3_path=s3_ncfile_path,
+                        save_dir='/home/chsu/cefi-cloud-transfer/operation/s3_kerchunk_json'
+                    )
+                    all_local_json_paths.append(local_json_path)
+
+                    # Upload the json file to S3
+                    s3_json_filename = cloud_object_name.split("/")[-1].strip(".nc")
+                    s3_json_path = "/".join(cloud_object_name.split("/")[:-1])
+                    boto3_upload(
+                        local_file=local_json_path,
+                        obj_name=f'{s3_json_path}/{s3_json_filename}.json',
+                        s3_bucket_name=S3_BUCKET_NAME,
+                        upload_config=transfer_config,
+                        s3_client=s3_client_upload
+                    )
 
     # clear the local json file
-    for json_file in all_local_json_paths:
-        os.remove(json_file)
-    logging.info("All kerchunk index files cleared.")
+    if KERCHUNK_FLAG :
+        for json_file in all_local_json_paths:
+            os.remove(json_file)
+        logging.info("All kerchunk index files cleared.")
 
     # Close the S3 client
     s3_client_upload.close()
