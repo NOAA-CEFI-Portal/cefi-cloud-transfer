@@ -19,12 +19,15 @@ find all netcdf files, and upload the latest release to the specified S3 bucket.
 """
 
 import os
-from datetime import datetime
+import json
 import logging
+from datetime import datetime
+import fsspec
 import boto3
 from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 import xarray as xr
+from kerchunk.hdf import SingleHdf5ToZarr
 
 # set up bucket
 S3_BUCKET_NAME = 'noaa-oar-cefi-regional-mom6-pds'
@@ -94,13 +97,14 @@ def boto3_upload(
             logging.error("Error checking object existence: %s", e)
             return
 
-    # check local data integrity
-    try :
-        ds = xr.open_dataset(local_file)
-        ds.close()
-    except Exception as e:
-        logging.error("Error verifying local file %s: %s", local_file, e)
-        return
+    # check local netcdf file data integrity (json file is not checked)
+    if local_file.endswith('.nc'):
+        try :
+            ds = xr.open_dataset(local_file)
+            ds.close()
+        except Exception as e:
+            logging.error("Error verifying local file %s: %s", local_file, e)
+            return
 
     # upload object
     try:
@@ -261,6 +265,58 @@ def verify_s3_file_access(s3_bucket_name: str, obj_name: str) -> bool:
         logging.error("Failed to verify S3 file access: %s", e)
         return False
 
+def gen_kerchunk_index(
+    s3_path : str,
+    save_dir : str,
+    server : str = 's3'
+)-> str:
+    """
+    Use Kerchunk's `SingleHdf5ToZarr` method to create a 
+    `Kerchunk` index from a NetCDF file in the cloud
+
+    Parameter
+    ---------
+    s3_path : str
+        The S3 path to a single NetCDF file in the format of 
+        f's3://{s3_bucket_name}/{obj_name}'
+    save_dir : str
+        The directory to save the Kerchunk index file
+    server : str
+        The cloud storage server to use (default: 's3')
+    """
+    # start a filesystem reference for publically accessible cloud storage
+    fs_read = fsspec.filesystem(server, anon=True)
+    s3_file_paths = fs_read.glob(s3_path)
+
+    # file number check (need to be one file)
+    if len(s3_file_paths) == 1:
+        s3_file = s3_file_paths[0]
+    else:
+        raise ValueError("More than one file found")
+
+    # create index file name for the cloud storage netcdf file
+    filename = s3_file.split("/")[-1].strip(".nc")
+    json_file = os.path.join(save_dir, f"{filename}.json")
+
+    # check if the json file already exist locally
+    if os.path.exists(json_file):
+        logging.info(f"JSON file already exists, skip kerchunking: {json_file}")
+        return json_file
+
+    # open file for remote read and indexing
+    with fs_read.open(s3_file, **dict(mode="rb")) as infile:
+        logging_run = f"Running kerchunk index generation for {s3_file}..."
+        logging.info(logging_run)
+
+        # Chunks smaller than `inline_threshold` will be stored directly
+        # in the reference file as data (as opposed to a URL and byte range).
+        h5chunks = SingleHdf5ToZarr(infile, s3_file, inline_threshold=300)
+        
+        with open(json_file, "wb") as f:
+            f.write(json.dumps(h5chunks.translate()).encode())
+
+        return json_file
+
 if __name__ == '__main__':
 
     # Setup logging file
@@ -287,12 +343,16 @@ if __name__ == '__main__':
     dict_latest, dict_outdated = keep_latest_release(dict_all_files)
 
     # upload files in the latest release one by one
+    all_local_json_paths = []
     for parent_dir, dict_releases_folders in dict_latest.items():
         for release_folder, list_files in dict_releases_folders.items():
             for file_info in list_files:
+
+                # Get the local file path and cloud object name for netcdf
                 local_file_path = file_info['local']
                 cloud_object_name = file_info['cloud']
-                # Upload the file to S3
+                
+                # Upload the netcdf file to S3
                 boto3_upload(
                     local_file=local_file_path,
                     obj_name=cloud_object_name,
@@ -300,6 +360,30 @@ if __name__ == '__main__':
                     upload_config=transfer_config,
                     s3_client=s3_client_upload
                 )
+    
+                # create kerchunk json file
+                s3_ncfile_path = f's3://{S3_BUCKET_NAME}/{cloud_object_name}'
+                local_json_path = gen_kerchunk_index(
+                    s3_path=s3_ncfile_path,
+                    save_dir='/home/chsu/cefi-cloud-transfer/operation/s3_kerchunk_json'
+                )
+                all_local_json_paths.append(local_json_path)
+
+                # Upload the json file to S3
+                s3_json_filename = cloud_object_name.split("/")[-1].strip(".nc")
+                s3_json_path = "/".join(cloud_object_name.split("/")[:-1])
+                boto3_upload(
+                    local_file=local_json_path,
+                    obj_name=f'{s3_json_path}/{s3_json_filename}.json',
+                    s3_bucket_name=S3_BUCKET_NAME,
+                    upload_config=transfer_config,
+                    s3_client=s3_client_upload
+                )
+
+    # clear the local json file
+    for json_file in all_local_json_paths:
+        os.remove(json_file)
+    logging.info("All kerchunk index files cleared.")
 
     # Close the S3 client
     s3_client_upload.close()
