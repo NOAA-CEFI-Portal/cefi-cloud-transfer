@@ -13,7 +13,6 @@ find all netcdf files, and remove the outdated release on S3 bucket.
 """
 
 import os
-from datetime import datetime
 import logging
 import boto3
 from boto3.s3.transfer import TransferConfig
@@ -25,8 +24,7 @@ S3_BUCKET_NAME = 'noaa-oar-cefi-regional-mom6-pds'
 
 # set up log file location
 script_dir = os.path.dirname(os.path.abspath(__file__))
-date_str = datetime.now().strftime("%Y%m%d")
-LOG_FILE = f's3_remove_{date_str}.log'
+LOG_FILE = f's3_remove.log'
 log_path = os.path.join(script_dir, LOG_FILE)
 
 
