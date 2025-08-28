@@ -18,5 +18,6 @@ dependencies:
   - kerchunk
   - ujson
   - numpy
+  - scipy
   - google-cloud-sdk
   - urllib3

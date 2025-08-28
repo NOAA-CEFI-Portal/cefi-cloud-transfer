@@ -28,6 +28,7 @@ from boto3.s3.transfer import TransferConfig
 from botocore.exceptions import ClientError
 import xarray as xr
 from kerchunk.hdf import SingleHdf5ToZarr
+from kerchunk.netCDF3 import NetCDF3ToZarr
 
 # set up bucket
 S3_BUCKET_NAME = 'noaa-oar-cefi-regional-mom6-pds'
@@ -295,7 +296,7 @@ def gen_kerchunk_index(
         raise ValueError("More than one file found")
 
     # create index file name for the cloud storage netcdf file
-    filename = s3_file.split("/")[-1].strip(".nc")
+    filename = s3_file.split("/")[-1].removesuffix(".nc")
     json_file = os.path.join(save_dir, f"{filename}.json")
 
     # check if the json file already exist locally
@@ -308,12 +309,16 @@ def gen_kerchunk_index(
         logging_run = f"Running kerchunk index generation for {s3_file}..."
         logging.info(logging_run)
 
-        # Chunks smaller than `inline_threshold` will be stored directly
-        # in the reference file as data (as opposed to a URL and byte range).
-        h5chunks = SingleHdf5ToZarr(infile, s3_file, inline_threshold=300)
-        
+        if 'static' not in filename:
+            # Chunks smaller than `inline_threshold` will be stored directly
+            # in the reference file as data (as opposed to a URL and byte range).
+            kchunks = SingleHdf5ToZarr(infile, s3_file, inline_threshold=300)
+        else: 
+            kchunks = NetCDF3ToZarr('s3://'+s3_file, inline_threshold=300)
+
+
         with open(json_file, "wb") as f:
-            f.write(json.dumps(h5chunks.translate()).encode())
+            f.write(json.dumps(kchunks.translate()).encode())
 
         return json_file
 
