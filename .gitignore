@@ -1,0 +1,4 @@
+*.log
+*.pyc
+operation/s3_kerchunk_json/*
+.vscode/
